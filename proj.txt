@@ -1,0 +1,273 @@
+.data
+board:       .word 0,0,0, 0,0,0, 0,0,0
+press_count: .word 0
+row_border:  .asciz "+---+---+---+\n"
+game_over:   .asciz "Game over.\n"
+inbuf:       .byte 0
+
+.text
+.globl main
+
+# ASCII key constants
+.equ KEY_W, 119
+.equ KEY_A, 97
+.equ KEY_S, 115
+.equ KEY_D, 100
+.equ KEY_X, 120
+
+main:
+    jal   ra, print_board
+
+main_loop:
+    addi  a0, x0, 0
+    la    a1, inbuf
+    addi  a2, x0, 1
+    addi  a7, x0, 63
+    ecall
+    beq   a0, x0, main_loop
+
+    la    t0, inbuf
+    lb    t1, 0(t0)
+
+    li    t2, KEY_W
+    beq   t1, t2, handle_w
+
+    li    t2, KEY_A
+    beq   t1, t2, handle_a
+
+    li    t2, KEY_S
+    beq   t1, t2, handle_s
+
+    li    t2, KEY_D
+    beq   t1, t2, handle_d
+
+    li    t2, KEY_X
+    beq   t1, t2, handle_exit
+
+    j     main_loop
+
+handle_w:
+handle_a:
+handle_s:
+handle_d:
+    jal   ra, print_board
+    j     main_loop
+
+handle_exit:
+    addi  a7, x0, 10
+    ecall
+
+mod_loop:
+    blt   t2, a0, mod_done
+    sub   t2, t2, a0
+    j     mod_loop
+
+mod_done:
+    add   a1, t2, x0
+    jal   ra, place_two_in_empty
+    jal   ra, print_board
+    j     main_loop
+
+do_game_over:
+    la    a0, game_over
+    addi  a7, x0, 4
+    ecall
+    addi  a7, x0, 10
+    ecall
+
+print_board:
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
+
+    la    t0, board
+    addi  t1, x0, 0
+    addi  t2, x0, 3
+
+print_board_row_loop:
+    la    a0, row_border
+    addi  a7, x0, 4
+    ecall
+
+    addi  t3, x0, 3
+
+print_board_cell_loop:
+    addi  a0, x0, 124
+    addi  a7, x0, 11
+    ecall
+
+    slli  t4, t1, 2
+    add   t4, t0, t4
+    lw    a0, 0(t4)
+
+    jal   ra, print_cell_value
+
+    addi  t1, t1, 1
+    addi  t3, t3, -1
+    bne   t3, x0, print_board_cell_loop
+
+    addi  a0, x0, 124
+    addi  a7, x0, 11
+    ecall
+    addi  a0, x0, 10
+    addi  a7, x0, 11
+    ecall
+
+    addi  t2, t2, -1
+    bne   t2, x0, print_board_row_loop
+
+    la    a0, row_border
+    addi  a7, x0, 4
+    ecall
+
+    lw    t2, 0(sp)
+    lw    t1, 4(sp)
+    lw    t0, 8(sp)
+    lw    ra, 12(sp)
+    addi  sp, sp, 16
+    jr    ra
+
+print_cell_value:
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
+
+    add   t0, a0, x0
+    beq   t0, x0, print_cell_blank
+
+    addi  t1, x0, 10
+    blt   t0, t1, one_digit
+    addi  t1, x0, 100
+    blt   t0, t1, two_digits
+
+    add   a0, t0, x0
+    addi  a7, x0, 1
+    ecall
+    j     print_cell_done
+
+one_digit:
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+    add   a0, t0, x0
+    addi  a7, x0, 1
+    ecall
+    j     print_cell_done
+
+two_digits:
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+    add   a0, t0, x0
+    addi  a7, x0, 1
+    ecall
+    j     print_cell_done
+
+print_cell_blank:
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+    addi  a0, x0, 32
+    addi  a7, x0, 11
+    ecall
+
+print_cell_done:
+    lw    t2, 0(sp)
+    lw    t1, 4(sp)
+    lw    t0, 8(sp)
+    lw    ra, 12(sp)
+    addi  sp, sp, 16
+    jr    ra
+
+count_empty_cells:
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
+
+    la    t0, board
+    addi  t1, x0, 9
+    addi  t2, x0, 0
+
+count_empty_loop:
+    lw    t3, 0(t0)
+    beq   t3, x0, is_empty
+    j     not_empty
+
+is_empty:
+    addi  t2, t2, 1
+
+not_empty:
+    addi  t0, t0, 4
+    addi  t1, t1, -1
+    bne   t1, x0, count_empty_loop
+
+    add   a0, t2, x0
+
+    lw    t2, 0(sp)
+    lw    t1, 4(sp)
+    lw    t0, 8(sp)
+    lw    ra, 12(sp)
+    addi  sp, sp, 16
+    jr    ra
+
+place_two_in_empty:
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
+
+    la    t0, board
+    addi  t1, x0, 9
+    add   t2, a1, x0
+
+place_two_loop:
+    lw    t3, 0(t0)
+    beq   t3, x0, maybe_here
+    j     next_cell
+
+maybe_here:
+    beq   t2, x0, do_place_two
+    addi  t2, t2, -1
+
+next_cell:
+    addi  t0, t0, 4
+    addi  t1, t1, -1
+    bne   t1, x0, place_two_loop
+    j     place_two_done
+
+do_place_two:
+    addi  t3, x0, 2
+    sw    t3, 0(t0)
+    j     place_two_done
+
+place_two_done:
+    lw    t2, 0(sp)
+    lw    t1, 4(sp)
+    lw    t0, 8(sp)
+    lw    ra, 12(sp)
+    addi  sp, sp, 16
+    jr    ra
+
+
+
+
+
+
+
+
+
+
+
