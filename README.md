@@ -24,8 +24,7 @@ If the input does not match any valid command, control returns to the main input
 
 ### Direction Handlers
 Each direction key has a dedicated handler label. At this stage:
-- Only handle_w performs an action (existing placeholder logic for testing).
-- ```handle_a```, ```handle_s```, and ```handle_d``` are implemented as stubs that immediately return to the main loop.
+- ```handle_w```,```handle_a```, ```handle_s```, and ```handle_d``` are implemented as stubs that immediately return to the main loop.
 
 These stubs serve as extension points where movement and merging logic will be implemented in later layers.
 
