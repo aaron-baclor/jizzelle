@@ -261,6 +261,250 @@ place_two_done:
     addi  sp, sp, 16
     jr    ra
 
+resolve_left:
+    addi sp, sp, -16
+    sw   ra, 12(sp)
+    sw   t0, 8(sp)
+    sw   t1, 4(sp)
+    sw   t2, 0(sp)
+
+    la   t0, board
+    li   t1, 0              # row
+
+rl_row_loop:
+    li   t2, 0              # seen tile
+    li   t3, 0              # last value
+    li   t4, 0              # col
+
+rl_col_loop:
+    slli t5, t1, 3          # row * 12
+    slli t6, t4, 2
+    add  t5, t5, t6
+    add  t5, t5, t0
+    lw   t7, 0(t5)
+
+    beq  t7, x0, rl_gap
+    beq  t2, x0, rl_first
+    beq  t7, t3, rl_valid
+    mv   t3, t7
+    addi t4, t4, 1
+    blt  t4, 3, rl_col_loop
+    j    rl_next_row
+
+rl_first:
+    mv   t3, t7
+    li   t2, 1
+    addi t4, t4, 1
+    blt  t4, 3, rl_col_loop
+    j    rl_next_row
+
+rl_gap:
+    bne  t2, x0, rl_valid
+    addi t4, t4, 1
+    blt  t4, 3, rl_col_loop
+
+rl_next_row:
+    addi t1, t1, 1
+    blt  t1, 3, rl_row_loop
+    li   a0, 0
+    j    rl_done
+
+rl_valid:
+    li   a0, 1
+
+rl_done:
+    lw   t2, 0(sp)
+    lw   t1, 4(sp)
+    lw   t0, 8(sp)
+    lw   ra, 12(sp)
+    addi sp, sp, 16
+    jr   ra
+
+####################
+# RESOLVE RIGHT (D)
+####################
+resolve_right:
+    addi sp, sp, -16
+    sw   ra, 12(sp)
+    sw   t0, 8(sp)
+    sw   t1, 4(sp)
+    sw   t2, 0(sp)
+
+    la   t0, board
+    li   t1, 0              # row
+
+rr_row_loop:
+    li   t2, 0
+    li   t3, 0
+    li   t4, 2              # col (right to left)
+
+rr_col_loop:
+    slli t5, t1, 3
+    slli t6, t4, 2
+    add  t5, t5, t6
+    add  t5, t5, t0
+    lw   t7, 0(t5)
+
+    beq  t7, x0, rr_gap
+    beq  t2, x0, rr_first
+    beq  t7, t3, rr_valid
+    mv   t3, t7
+    addi t4, t4, -1
+    bge  t4, x0, rr_col_loop
+    j    rr_next_row
+
+rr_first:
+    mv   t3, t7
+    li   t2, 1
+    addi t4, t4, -1
+    bge  t4, x0, rr_col_loop
+    j    rr_next_row
+
+rr_gap:
+    bne  t2, x0, rr_valid
+    addi t4, t4, -1
+    bge  t4, x0, rr_col_loop
+
+rr_next_row:
+    addi t1, t1, 1
+    blt  t1, 3, rr_row_loop
+    li   a0, 0
+    j    rr_done
+
+rr_valid:
+    li   a0, 1
+
+rr_done:
+    lw   t2, 0(sp)
+    lw   t1, 4(sp)
+    lw   t0, 8(sp)
+    lw   ra, 12(sp)
+    addi sp, sp, 16
+    jr   ra
+
+####################
+# RESOLVE UP (W)
+####################
+resolve_up:
+    addi sp, sp, -16
+    sw   ra, 12(sp)
+    sw   t0, 8(sp)
+    sw   t1, 4(sp)
+    sw   t2, 0(sp)
+
+    la   t0, board
+    li   t1, 0              # col
+
+ru_col_loop:
+    li   t2, 0
+    li   t3, 0
+    li   t4, 0              # row
+
+ru_row_loop:
+    slli t5, t4, 3
+    slli t6, t1, 2
+    add  t5, t5, t6
+    add  t5, t5, t0
+    lw   t7, 0(t5)
+
+    beq  t7, x0, ru_gap
+    beq  t2, x0, ru_first
+    beq  t7, t3, ru_valid
+    mv   t3, t7
+    addi t4, t4, 1
+    blt  t4, 3, ru_row_loop
+    j    ru_next_col
+
+ru_first:
+    mv   t3, t7
+    li   t2, 1
+    addi t4, t4, 1
+    blt  t4, 3, ru_row_loop
+    j    ru_next_col
+
+ru_gap:
+    bne  t2, x0, ru_valid
+    addi t4, t4, 1
+    blt  t4, 3, ru_row_loop
+
+ru_next_col:
+    addi t1, t1, 1
+    blt  t1, 3, ru_col_loop
+    li   a0, 0
+    j    ru_done
+
+ru_valid:
+    li   a0, 1
+
+ru_done:
+    lw   t2, 0(sp)
+    lw   t1, 4(sp)
+    lw   t0, 8(sp)
+    lw   ra, 12(sp)
+    addi sp, sp, 16
+    jr   ra
+
+####################
+# RESOLVE DOWN (S)
+####################
+resolve_down:
+    addi sp, sp, -16
+    sw   ra, 12(sp)
+    sw   t0, 8(sp)
+    sw   t1, 4(sp)
+    sw   t2, 0(sp)
+
+    la   t0, board
+    li   t1, 0              # col
+
+rd_col_loop:
+    li   t2, 0
+    li   t3, 0
+    li   t4, 2              # row (bottom to top)
+
+rd_row_loop:
+    slli t5, t4, 3
+    slli t6, t1, 2
+    add  t5, t5, t6
+    add  t5, t5, t0
+    lw   t7, 0(t5)
+
+    beq  t7, x0, rd_gap
+    beq  t2, x0, rd_first
+    beq  t7, t3, rd_valid
+    mv   t3, t7
+    addi t4, t4, -1
+    bge  t4, x0, rd_row_loop
+    j    rd_next_col
+
+rd_first:
+    mv   t3, t7
+    li   t2, 1
+    addi t4, t4, -1
+    bge  t4, x0, rd_row_loop
+    j    rd_next_col
+
+rd_gap:
+    bne  t2, x0, rd_valid
+    addi t4, t4, -1
+    bge  t4, x0, rd_row_loop
+
+rd_next_col:
+    addi t1, t1, 1
+    blt  t1, 3, rd_col_loop
+    li   a0, 0
+    j    rd_done
+
+rd_valid:
+    li   a0, 1
+
+rd_done:
+    lw   t2, 0(sp)
+    lw   t1, 4(sp)
+    lw   t0, 8(sp)
+    lw   ra, 12(sp)
+    addi sp, sp, 16
+    jr   ra
 
 
 
