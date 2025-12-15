@@ -1,5 +1,12 @@
 # jizzelle
 21 2048 67
+## LAYERS
+- Layer 1 — Input layer
+“What key did the user press?”
+- Layer 2 — Game rules
+“What should happen when that key is pressed?”
+- Layer 3 — Board mutation
+“Which numbers move where in memory?”
 
 ## Layer 1: Input Handling and Command Dispatch
 The input handling layer is responsible for reading keyboard input from the user and routing the program to the appropriate handler routine based on the pressed key. This layer does not implement any tile movement or merging logic; it only determines which game action should be triggered.
