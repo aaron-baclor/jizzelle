@@ -1,9 +1,16 @@
 .data
-board:       .word 2,0,2,  0,4,4,  2,2,2
+board:       .word 0,0,0, 0,0,0, 0,0,0
 press_count: .word 0
 row_border:  .asciz "+---+---+---+\n"
 game_over:   .asciz "Game over.\n"
+win_msg:     .asciz "Congratulations! You have reached the 512 tile!\n"
 inbuf:       .byte 0
+newline:     .asciz "\n"
+menu1:       .asciz "Choose [1] or [2]:\n"
+menu2:       .asciz "[1] New Game\n"
+menu3:       .asciz "[2] Start from a State\n"
+enter_cfg:   .asciz "Enter a board configuration:\n"
+enter_move:  .asciz "Enter a move:\n"
 
 .text
 .globl main
@@ -13,15 +20,111 @@ inbuf:       .byte 0
 .equ KEY_S, 115
 .equ KEY_D, 100
 .equ KEY_X, 120
+.equ KEY_1, 49
+.equ KEY_2, 50
 
 main:
+    # Print menu
+    la    a0, menu1
+    li    a7, 4
+    ecall
+    la    a0, menu2
+    li    a7, 4
+    ecall
+    la    a0, menu3
+    li    a7, 4
+    ecall
+
+menu_input:
+    li    a0, 0
+    la    a1, inbuf
+    li    a2, 1
+    li    a7, 63
+    ecall
+    beq   a0, x0, menu_input
+
+    la    t0, inbuf
+    lb    t1, 0(t0)
+
+    li    t2, KEY_1
+    beq   t1, t2, new_game
+
+    li    t2, KEY_2
+    beq   t1, t2, start_from_state
+
+    j     menu_input
+
+new_game:
+    # Place two random 2s using press_count as seed
+    la    t0, press_count
+    lw    t1, 0(t0)
+    
+    # First tile position (simple pseudo-random)
+    li    t2, 9
+    rem   t3, t1, t2        # t3 = position 0-8
+    
+    la    t0, board
+    slli  t4, t3, 2
+    add   t4, t0, t4
+    li    t5, 2
+    sw    t5, 0(t4)
+    
+    # Second tile - different position
+    addi  t1, t1, 3
+    li    t2, 9
+    rem   t6, t1, t2
+    beq   t6, t3, adjust_pos
+    j     place_second
+    
+adjust_pos:
+    addi  t6, t6, 1
+    li    t2, 9
+    rem   t6, t6, t2
+
+place_second:
+    slli  t4, t6, 2
+    add   t4, t0, t4
+    sw    t5, 0(t4)
+    
+    jal   ra, print_board
+    j     game_start
+
+start_from_state:
+    la    a0, enter_cfg
+    li    a7, 4
+    ecall
+    
+    la    t0, board
+    li    t1, 0
+    li    t2, 9
+
+read_config_loop:
+    li    a7, 5           # Read integer
+    ecall
+    slli  t3, t1, 2
+    add   t3, t0, t3
+    sw    a0, 0(t3)
+    addi  t1, t1, 1
+    blt   t1, t2, read_config_loop
+
     jal   ra, print_board
 
+game_start:
+    la    a0, enter_move
+    li    a7, 4
+    ecall
+
 main_loop:
-    addi  a0, x0, 0
+    # Increment press_count for randomness
+    la    t0, press_count
+    lw    t1, 0(t0)
+    addi  t1, t1, 1
+    sw    t1, 0(t0)
+
+    li    a0, 0
     la    a1, inbuf
-    addi  a2, x0, 1
-    addi  a7, x0, 63
+    li    a2, 1
+    li    a7, 63
     ecall
     beq   a0, x0, main_loop
 
@@ -49,33 +152,153 @@ handle_w:
     jal   ra, resolve_up
     beq   a0, x0, main_loop
     jal   ra, apply_up
-    jal   ra, print_board
-    j     main_loop
+    j     after_move
 
 handle_a:
     jal   ra, resolve_left
     beq   a0, x0, main_loop
     jal   ra, apply_left
-    jal   ra, print_board
-    j     main_loop
+    j     after_move
 
 handle_s:
     jal   ra, resolve_down
     beq   a0, x0, main_loop
     jal   ra, apply_down
-    jal   ra, print_board
-    j     main_loop
+    j     after_move
 
 handle_d:
     jal   ra, resolve_right
     beq   a0, x0, main_loop
     jal   ra, apply_right
+    j     after_move
+
+after_move:
+    # Check for win (512 tile)
+    jal   ra, check_win
+    bne   a0, x0, handle_win
+    
+    # Spawn new tile
+    jal   ra, spawn_tile
+    
+    # Print board
     jal   ra, print_board
+    
+    # Check for game over
+    jal   ra, check_game_over
+    bne   a0, x0, handle_game_over
+    
     j     main_loop
 
-handle_exit:
-    addi  a7, x0, 10
+handle_win:
+    jal   ra, print_board
+    la    a0, win_msg
+    li    a7, 4
     ecall
+    j     handle_exit
+
+handle_game_over:
+    la    a0, game_over
+    li    a7, 4
+    ecall
+    j     handle_exit
+
+handle_exit:
+    li    a7, 10
+    ecall
+
+########################################
+# SPAWN TILE - Place 2 at first empty cell
+########################################
+
+spawn_tile:
+    la    t0, board
+    li    t1, 0
+    li    t2, 9
+
+spawn_loop:
+    slli  t3, t1, 2
+    add   t3, t0, t3
+    lw    t4, 0(t3)
+    beq   t4, x0, spawn_here
+    addi  t1, t1, 1
+    blt   t1, t2, spawn_loop
+    jr    ra              # No empty cell found
+
+spawn_here:
+    li    t4, 2
+    sw    t4, 0(t3)
+    jr    ra
+
+########################################
+# CHECK WIN - Returns 1 if 512 tile exists
+########################################
+
+check_win:
+    la    t0, board
+    li    t1, 0
+    li    t2, 9
+    li    t3, 512
+
+win_loop:
+    slli  t4, t1, 2
+    add   t4, t0, t4
+    lw    t5, 0(t4)
+    beq   t5, t3, win_found
+    addi  t1, t1, 1
+    blt   t1, t2, win_loop
+    li    a0, 0
+    jr    ra
+
+win_found:
+    li    a0, 1
+    jr    ra
+
+########################################
+# CHECK GAME OVER - Returns 1 if no moves left
+########################################
+
+check_game_over:
+    addi  sp, sp, -4
+    sw    ra, 0(sp)
+    
+    # First check if any empty cell
+    la    t0, board
+    li    t1, 0
+    li    t2, 9
+
+go_empty_loop:
+    slli  t3, t1, 2
+    add   t3, t0, t3
+    lw    t4, 0(t3)
+    beq   t4, x0, go_not_over   # Empty cell found
+    addi  t1, t1, 1
+    blt   t1, t2, go_empty_loop
+    
+    # No empty cells, check if any valid moves
+    jal   ra, resolve_left
+    bne   a0, x0, go_not_over
+    jal   ra, resolve_right
+    bne   a0, x0, go_not_over
+    jal   ra, resolve_up
+    bne   a0, x0, go_not_over
+    jal   ra, resolve_down
+    bne   a0, x0, go_not_over
+    
+    # No valid moves
+    li    a0, 1
+    lw    ra, 0(sp)
+    addi  sp, sp, 4
+    jr    ra
+
+go_not_over:
+    li    a0, 0
+    lw    ra, 0(sp)
+    addi  sp, sp, 4
+    jr    ra
+
+########################################
+# PRINT BOARD
+########################################
 
 print_board:
     addi  sp, sp, -16
@@ -185,7 +408,7 @@ print_cell_done:
     jr    ra
 
 ########################################
-# LAYER 2 — MOVE RESOLUTION
+# LAYER 2 - MOVE RESOLUTION
 ########################################
 
 resolve_left:
@@ -194,9 +417,9 @@ resolve_left:
     li   t6, 3
 
 rl_row:
-    li   t2, 0      # seen
-    li   t3, 0      # last
-    li   t4, 0      # col = 0
+    li   t2, 0
+    li   t3, 0
+    li   t4, 0
 
 rl_col:
     mul  t5, t1, t6
@@ -244,7 +467,7 @@ resolve_right:
 rr_row:
     li   t2, 0
     li   t3, 0
-    li   t4, 2      # col = 2
+    li   t4, 2
 
 rr_col:
     mul  t5, t1, t6
@@ -292,7 +515,7 @@ resolve_up:
 ru_col:
     li   t2, 0
     li   t3, 0
-    li   t4, 0      # row = 0
+    li   t4, 0
 
 ru_row:
     mul  t5, t4, t6
@@ -340,7 +563,7 @@ resolve_down:
 rd_col:
     li   t2, 0
     li   t3, 0
-    li   t4, 2      # row = 2
+    li   t4, 2
 
 rd_row:
     mul  t5, t4, t6
@@ -380,32 +603,32 @@ rd_valid:
     li   a0, 1
     jr   ra
 
-
 ########################################
-# LAYER 3 — APPLY MOVE LEFT
+# LAYER 3 - APPLY MOVES
 ########################################
 
 apply_left:
     la   t0, board
-    li   t6, 3          # GRID SIZE (READ-ONLY)
-    li   t1, 0          # row
+    li   t6, 3
+    li   t1, 0
 
 al_row:
-    li   t2, 0          # read col
-    li   t3, 0          # write col
-    li   t4, 0          # last
-    li   t5, 0          # merged flag (reuse safely)
+    li   t2, 0
+    li   t3, 0
+    li   t4, 0
+    li   s0, 0          # merged flag
 
 al_read:
     mul  t5, t1, t6
     add  t5, t5, t2
     slli t5, t5, 2
     add  t5, t5, t0
-    lw   t5, 0(t5)
+    lw   s1, 0(t5)      # s1 = current cell value
 
-    beq  t5, x0, al_next
+    beq  s1, x0, al_next
     beq  t4, x0, al_set
-    beq  t5, t4, al_merge
+    bne  s0, x0, al_write   # already merged, can't merge again
+    beq  s1, t4, al_merge
 
 al_write:
     mul  t5, t1, t6
@@ -415,13 +638,13 @@ al_write:
     sw   t4, 0(t5)
 
     addi t3, t3, 1
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    al_next
 
 al_set:
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    al_next
 
 al_merge:
@@ -434,7 +657,7 @@ al_merge:
 
     addi t3, t3, 1
     li   t4, 0
-    li   t5, 1
+    li   s0, 1
 
 al_next:
     addi t2, t2, 1
@@ -473,21 +696,22 @@ apply_right:
     li   t1, 0
 
 ar_row:
-    li   t2, 2          # read col
-    li   t3, 2          # write col
+    li   t2, 2
+    li   t3, 2
     li   t4, 0
-    li   t5, 0
+    li   s0, 0
 
 ar_read:
     mul  t5, t1, t6
     add  t5, t5, t2
     slli t5, t5, 2
     add  t5, t5, t0
-    lw   t5, 0(t5)
+    lw   s1, 0(t5)
 
-    beq  t5, x0, ar_next
+    beq  s1, x0, ar_next
     beq  t4, x0, ar_set
-    beq  t5, t4, ar_merge
+    bne  s0, x0, ar_write
+    beq  s1, t4, ar_merge
 
 ar_write:
     mul  t5, t1, t6
@@ -497,13 +721,13 @@ ar_write:
     sw   t4, 0(t5)
 
     addi t3, t3, -1
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    ar_next
 
 ar_set:
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    ar_next
 
 ar_merge:
@@ -516,7 +740,7 @@ ar_merge:
 
     addi t3, t3, -1
     li   t4, 0
-    li   t5, 1
+    li   s0, 1
 
 ar_next:
     addi t2, t2, -1
@@ -552,24 +776,25 @@ ar_next_row:
 apply_up:
     la   t0, board
     li   t6, 3
-    li   t1, 0          # col
+    li   t1, 0
 
 au_col:
-    li   t2, 0          # read row
-    li   t3, 0          # write row
+    li   t2, 0
+    li   t3, 0
     li   t4, 0
-    li   t5, 0
+    li   s0, 0
 
 au_read:
     mul  t5, t2, t6
     add  t5, t5, t1
     slli t5, t5, 2
     add  t5, t5, t0
-    lw   t5, 0(t5)
+    lw   s1, 0(t5)
 
-    beq  t5, x0, au_next
+    beq  s1, x0, au_next
     beq  t4, x0, au_set
-    beq  t5, t4, au_merge
+    bne  s0, x0, au_write
+    beq  s1, t4, au_merge
 
 au_write:
     mul  t5, t3, t6
@@ -579,13 +804,13 @@ au_write:
     sw   t4, 0(t5)
 
     addi t3, t3, 1
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    au_next
 
 au_set:
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    au_next
 
 au_merge:
@@ -598,7 +823,7 @@ au_merge:
 
     addi t3, t3, 1
     li   t4, 0
-    li   t5, 1
+    li   s0, 1
 
 au_next:
     addi t2, t2, 1
@@ -634,24 +859,25 @@ au_next_col:
 apply_down:
     la   t0, board
     li   t6, 3
-    li   t1, 0          # col
+    li   t1, 0
 
 ad_col:
-    li   t2, 2          # read row
-    li   t3, 2          # write row
+    li   t2, 2
+    li   t3, 2
     li   t4, 0
-    li   t5, 0
+    li   s0, 0
 
 ad_read:
     mul  t5, t2, t6
     add  t5, t5, t1
     slli t5, t5, 2
     add  t5, t5, t0
-    lw   t5, 0(t5)
+    lw   s1, 0(t5)
 
-    beq  t5, x0, ad_next
+    beq  s1, x0, ad_next
     beq  t4, x0, ad_set
-    beq  t5, t4, ad_merge
+    bne  s0, x0, ad_write
+    beq  s1, t4, ad_merge
 
 ad_write:
     mul  t5, t3, t6
@@ -661,13 +887,13 @@ ad_write:
     sw   t4, 0(t5)
 
     addi t3, t3, -1
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    ad_next
 
 ad_set:
-    mv   t4, t5
-    li   t5, 0
+    mv   t4, s1
+    li   s0, 0
     j    ad_next
 
 ad_merge:
@@ -680,7 +906,7 @@ ad_merge:
 
     addi t3, t3, -1
     li   t4, 0
-    li   t5, 1
+    li   s0, 1
 
 ad_next:
     addi t2, t2, -1
@@ -712,4 +938,3 @@ ad_next_col:
     addi t1, t1, 1
     blt  t1, t6, ad_col
     jr   ra
-
