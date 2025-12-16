@@ -36,10 +36,15 @@ main:
     ecall
 
 menu_input:
-    li    a0, 0
-    la    a1, inbuf
-    li    a2, 1
-    li    a7, 63
+    la   t0, press_count
+    lw   t1, 0(t0)
+    addi t1, t1, 1
+    sw   t1, 0(t0)
+
+    li   a0, 0
+    la   a1, inbuf
+    li   a2, 1
+    li   a7, 63
     ecall
     beq   a0, x0, menu_input
 
@@ -410,16 +415,15 @@ print_cell_done:
 ########################################
 # LAYER 2 - MOVE RESOLUTION
 ########################################
-
 resolve_left:
     la   t0, board
-    li   t1, 0
-    li   t6, 3
+    li   t6, 3          # size
+    li   t1, 0          # row
 
 rl_row:
-    li   t2, 0
-    li   t3, 0
-    li   t4, 0
+    li   t2, 0          # seen_zero
+    li   t3, 0          # last_nonzero
+    li   t4, 0          # col
 
 rl_col:
     mul  t5, t1, t6
@@ -428,46 +432,40 @@ rl_col:
     add  t5, t5, t0
     lw   t5, 0(t5)
 
-    beq  t5, x0, rl_gap
-    beq  t2, x0, rl_first
-    beq  t5, t3, rl_valid
+    beq  t5, x0, rl_zero
 
+    bne  t2, x0, r_valid       # nonzero after a zero -> can slide left
+    beq  t3, x0, rl_setlast
+    beq  t5, t3, r_valid       # merge possible
     mv   t3, t5
-    addi t4, t4, 1
-    blt  t4, t6, rl_col
     j    rl_next
 
-rl_first:
+rl_setlast:
     mv   t3, t5
-    li   t2, 1
-    addi t4, t4, 1
-    blt  t4, t6, rl_col
     j    rl_next
 
-rl_gap:
-    bne  t2, x0, rl_valid
-    addi t4, t4, 1
-    blt  t4, t6, rl_col
+rl_zero:
+    li   t2, 1                 # saw a zero
 
 rl_next:
+    addi t4, t4, 1
+    blt  t4, t6, rl_col
+
     addi t1, t1, 1
     blt  t1, t6, rl_row
-    li   a0, 0
-    jr   ra
 
-rl_valid:
-    li   a0, 1
+    li   a0, 0
     jr   ra
 
 resolve_right:
     la   t0, board
-    li   t1, 0
     li   t6, 3
+    li   t1, 0          # row
 
 rr_row:
-    li   t2, 0
-    li   t3, 0
-    li   t4, 2
+    li   t2, 0          # seen_zero
+    li   t3, 0          # last_nonzero
+    li   t4, 2          # col
 
 rr_col:
     mul  t5, t1, t6
@@ -476,46 +474,40 @@ rr_col:
     add  t5, t5, t0
     lw   t5, 0(t5)
 
-    beq  t5, x0, rr_gap
-    beq  t2, x0, rr_first
-    beq  t5, t3, rr_valid
+    beq  t5, x0, rr_zero
 
+    bne  t2, x0, r_valid       # nonzero after a zero (in scan dir) -> can slide right
+    beq  t3, x0, rr_setlast
+    beq  t5, t3, r_valid       # merge possible
     mv   t3, t5
-    addi t4, t4, -1
-    bge  t4, x0, rr_col
     j    rr_next
 
-rr_first:
+rr_setlast:
     mv   t3, t5
+    j    rr_next
+
+rr_zero:
     li   t2, 1
-    addi t4, t4, -1
-    bge  t4, x0, rr_col
-    j    rr_next
-
-rr_gap:
-    bne  t2, x0, rr_valid
-    addi t4, t4, -1
-    bge  t4, x0, rr_col
 
 rr_next:
+    addi t4, t4, -1
+    bge  t4, x0, rr_col
+
     addi t1, t1, 1
     blt  t1, t6, rr_row
-    li   a0, 0
-    jr   ra
 
-rr_valid:
-    li   a0, 1
+    li   a0, 0
     jr   ra
 
 resolve_up:
     la   t0, board
-    li   t1, 0
     li   t6, 3
+    li   t1, 0          # col
 
 ru_col:
-    li   t2, 0
-    li   t3, 0
-    li   t4, 0
+    li   t2, 0          # seen_zero
+    li   t3, 0          # last_nonzero
+    li   t4, 0          # row
 
 ru_row:
     mul  t5, t4, t6
@@ -524,46 +516,40 @@ ru_row:
     add  t5, t5, t0
     lw   t5, 0(t5)
 
-    beq  t5, x0, ru_gap
-    beq  t2, x0, ru_first
-    beq  t5, t3, ru_valid
+    beq  t5, x0, ru_zero
 
+    bne  t2, x0, r_valid
+    beq  t3, x0, ru_setlast
+    beq  t5, t3, r_valid
     mv   t3, t5
-    addi t4, t4, 1
-    blt  t4, t6, ru_row
     j    ru_next
 
-ru_first:
+ru_setlast:
     mv   t3, t5
+    j    ru_next
+
+ru_zero:
     li   t2, 1
-    addi t4, t4, 1
-    blt  t4, t6, ru_row
-    j    ru_next
-
-ru_gap:
-    bne  t2, x0, ru_valid
-    addi t4, t4, 1
-    blt  t4, t6, ru_row
 
 ru_next:
+    addi t4, t4, 1
+    blt  t4, t6, ru_row
+
     addi t1, t1, 1
     blt  t1, t6, ru_col
-    li   a0, 0
-    jr   ra
 
-ru_valid:
-    li   a0, 1
+    li   a0, 0
     jr   ra
 
 resolve_down:
     la   t0, board
-    li   t1, 0
     li   t6, 3
+    li   t1, 0          # col
 
 rd_col:
-    li   t2, 0
-    li   t3, 0
-    li   t4, 2
+    li   t2, 0          # seen_zero
+    li   t3, 0          # last_nonzero
+    li   t4, 2          # row
 
 rd_row:
     mul  t5, t4, t6
@@ -572,35 +558,29 @@ rd_row:
     add  t5, t5, t0
     lw   t5, 0(t5)
 
-    beq  t5, x0, rd_gap
-    beq  t2, x0, rd_first
-    beq  t5, t3, rd_valid
+    beq  t5, x0, rd_zero
 
+    bne  t2, x0, r_valid
+    beq  t3, x0, rd_setlast
+    beq  t5, t3, r_valid
     mv   t3, t5
-    addi t4, t4, -1
-    bge  t4, x0, rd_row
     j    rd_next
 
-rd_first:
+rd_setlast:
     mv   t3, t5
+    j    rd_next
+
+rd_zero:
     li   t2, 1
-    addi t4, t4, -1
-    bge  t4, x0, rd_row
-    j    rd_next
-
-rd_gap:
-    bne  t2, x0, rd_valid
-    addi t4, t4, -1
-    bge  t4, x0, rd_row
 
 rd_next:
+    addi t4, t4, -1
+    bge  t4, x0, rd_row
+
     addi t1, t1, 1
     blt  t1, t6, rd_col
-    li   a0, 0
-    jr   ra
 
-rd_valid:
-    li   a0, 1
+    li   a0, 0
     jr   ra
 
 ########################################
@@ -608,6 +588,10 @@ rd_valid:
 ########################################
 
 apply_left:
+    addi sp, sp, -8
+    sw   s0, 4(sp)
+    sw   s1, 0(sp)
+
     la   t0, board
     li   t6, 3
     li   t1, 0
@@ -623,11 +607,11 @@ al_read:
     add  t5, t5, t2
     slli t5, t5, 2
     add  t5, t5, t0
-    lw   s1, 0(t5)      # s1 = current cell value
+    lw   s1, 0(t5)
 
     beq  s1, x0, al_next
     beq  t4, x0, al_set
-    bne  s0, x0, al_write   # already merged, can't merge again
+    bne  s0, x0, al_write
     beq  s1, t4, al_merge
 
 al_write:
@@ -664,7 +648,6 @@ al_next:
     blt  t2, t6, al_read
 
     beq  t4, x0, al_zero
-
     mul  t5, t1, t6
     add  t5, t5, t3
     slli t5, t5, 2
@@ -688,9 +671,18 @@ al_fill:
 al_next_row:
     addi t1, t1, 1
     blt  t1, t6, al_row
+
+    lw   s1, 0(sp)
+    lw   s0, 4(sp)
+    addi sp, sp, 8
     jr   ra
 
+
 apply_right:
+    addi sp, sp, -8
+    sw   s0, 4(sp)
+    sw   s1, 0(sp)
+
     la   t0, board
     li   t6, 3
     li   t1, 0
@@ -747,7 +739,6 @@ ar_next:
     bge  t2, x0, ar_read
 
     beq  t4, x0, ar_zero
-
     mul  t5, t1, t6
     add  t5, t5, t3
     slli t5, t5, 2
@@ -771,9 +762,17 @@ ar_fill:
 ar_next_row:
     addi t1, t1, 1
     blt  t1, t6, ar_row
+
+    lw   s1, 0(sp)
+    lw   s0, 4(sp)
+    addi sp, sp, 8
     jr   ra
 
 apply_up:
+    addi sp, sp, -8
+    sw   s0, 4(sp)
+    sw   s1, 0(sp)
+
     la   t0, board
     li   t6, 3
     li   t1, 0
@@ -830,7 +829,6 @@ au_next:
     blt  t2, t6, au_read
 
     beq  t4, x0, au_zero
-
     mul  t5, t3, t6
     add  t5, t5, t1
     slli t5, t5, 2
@@ -854,9 +852,17 @@ au_fill:
 au_next_col:
     addi t1, t1, 1
     blt  t1, t6, au_col
+
+    lw   s1, 0(sp)
+    lw   s0, 4(sp)
+    addi sp, sp, 8
     jr   ra
 
 apply_down:
+    addi sp, sp, -8
+    sw   s0, 4(sp)
+    sw   s1, 0(sp)
+
     la   t0, board
     li   t6, 3
     li   t1, 0
@@ -913,7 +919,6 @@ ad_next:
     bge  t2, x0, ad_read
 
     beq  t4, x0, ad_zero
-
     mul  t5, t3, t6
     add  t5, t5, t1
     slli t5, t5, 2
@@ -937,4 +942,8 @@ ad_fill:
 ad_next_col:
     addi t1, t1, 1
     blt  t1, t6, ad_col
+
+    lw   s1, 0(sp)
+    lw   s0, 4(sp)
+    addi sp, sp, 8
     jr   ra
