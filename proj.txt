@@ -8,7 +8,6 @@ inbuf:       .byte 0
 .text
 .globl main
 
-# ASCII key constants
 .equ KEY_W, 119
 .equ KEY_A, 97
 .equ KEY_S, 115
@@ -47,31 +46,30 @@ main_loop:
     j     main_loop
 
 handle_w:
+    jal  ra, resolve_up
+    beq  a0, x0, main_loop
+    jal  ra, print_board
+    j    main_loop
+
 handle_a:
+    jal  ra, resolve_left
+    beq  a0, x0, main_loop
+    jal  ra, print_board
+    j    main_loop
+
 handle_s:
+    jal  ra, resolve_down
+    beq  a0, x0, main_loop
+    jal  ra, print_board
+    j    main_loop
+
 handle_d:
-    jal   ra, print_board
-    j     main_loop
+    jal  ra, resolve_right
+    beq  a0, x0, main_loop
+    jal  ra, print_board
+    j    main_loop
 
 handle_exit:
-    addi  a7, x0, 10
-    ecall
-
-mod_loop:
-    blt   t2, a0, mod_done
-    sub   t2, t2, a0
-    j     mod_loop
-
-mod_done:
-    add   a1, t2, x0
-    jal   ra, place_two_in_empty
-    jal   ra, print_board
-    j     main_loop
-
-do_game_over:
-    la    a0, game_over
-    addi  a7, x0, 4
-    ecall
     addi  a7, x0, 10
     ecall
 
@@ -83,43 +81,42 @@ print_board:
     sw    t2, 0(sp)
 
     la    t0, board
-    addi  t1, x0, 0
-    addi  t2, x0, 3
+    li    t1, 0
+    li    t2, 3
 
 print_board_row_loop:
     la    a0, row_border
-    addi  a7, x0, 4
+    li    a7, 4
     ecall
 
-    addi  t3, x0, 3
+    li    t3, 3
 
 print_board_cell_loop:
-    addi  a0, x0, 124
-    addi  a7, x0, 11
+    li    a0, 124
+    li    a7, 11
     ecall
 
     slli  t4, t1, 2
     add   t4, t0, t4
     lw    a0, 0(t4)
-
     jal   ra, print_cell_value
 
     addi  t1, t1, 1
     addi  t3, t3, -1
     bne   t3, x0, print_board_cell_loop
 
-    addi  a0, x0, 124
-    addi  a7, x0, 11
+    li    a0, 124
+    li    a7, 11
     ecall
-    addi  a0, x0, 10
-    addi  a7, x0, 11
+    li    a0, 10
+    li    a7, 11
     ecall
 
     addi  t2, t2, -1
     bne   t2, x0, print_board_row_loop
 
     la    a0, row_border
-    addi  a7, x0, 4
+    li    a7, 4
     ecall
 
     lw    t2, 0(sp)
@@ -136,49 +133,43 @@ print_cell_value:
     sw    t1, 4(sp)
     sw    t2, 0(sp)
 
-    add   t0, a0, x0
+    mv    t0, a0
     beq   t0, x0, print_cell_blank
 
-    addi  t1, x0, 10
+    li    t1, 10
     blt   t0, t1, one_digit
-    addi  t1, x0, 100
+    li    t1, 100
     blt   t0, t1, two_digits
 
-    add   a0, t0, x0
-    addi  a7, x0, 1
+    mv    a0, t0
+    li    a7, 1
     ecall
     j     print_cell_done
 
 one_digit:
-    addi  a0, x0, 32
-    addi  a7, x0, 11
+    li    a0, 32
+    li    a7, 11
     ecall
-    addi  a0, x0, 32
-    addi  a7, x0, 11
     ecall
-    add   a0, t0, x0
-    addi  a7, x0, 1
+    mv    a0, t0
+    li    a7, 1
     ecall
     j     print_cell_done
 
 two_digits:
-    addi  a0, x0, 32
-    addi  a7, x0, 11
+    li    a0, 32
+    li    a7, 11
     ecall
-    add   a0, t0, x0
-    addi  a7, x0, 1
+    mv    a0, t0
+    li    a7, 1
     ecall
     j     print_cell_done
 
 print_cell_blank:
-    addi  a0, x0, 32
-    addi  a7, x0, 11
+    li    a0, 32
+    li    a7, 11
     ecall
-    addi  a0, x0, 32
-    addi  a7, x0, 11
     ecall
-    addi  a0, x0, 32
-    addi  a7, x0, 11
     ecall
 
 print_cell_done:
@@ -189,329 +180,162 @@ print_cell_done:
     addi  sp, sp, 16
     jr    ra
 
-count_empty_cells:
-    addi  sp, sp, -16
-    sw    ra, 12(sp)
-    sw    t0, 8(sp)
-    sw    t1, 4(sp)
-    sw    t2, 0(sp)
-
-    la    t0, board
-    addi  t1, x0, 9
-    addi  t2, x0, 0
-
-count_empty_loop:
-    lw    t3, 0(t0)
-    beq   t3, x0, is_empty
-    j     not_empty
-
-is_empty:
-    addi  t2, t2, 1
-
-not_empty:
-    addi  t0, t0, 4
-    addi  t1, t1, -1
-    bne   t1, x0, count_empty_loop
-
-    add   a0, t2, x0
-
-    lw    t2, 0(sp)
-    lw    t1, 4(sp)
-    lw    t0, 8(sp)
-    lw    ra, 12(sp)
-    addi  sp, sp, 16
-    jr    ra
-
-place_two_in_empty:
-    addi  sp, sp, -16
-    sw    ra, 12(sp)
-    sw    t0, 8(sp)
-    sw    t1, 4(sp)
-    sw    t2, 0(sp)
-
-    la    t0, board
-    addi  t1, x0, 9
-    add   t2, a1, x0
-
-place_two_loop:
-    lw    t3, 0(t0)
-    beq   t3, x0, maybe_here
-    j     next_cell
-
-maybe_here:
-    beq   t2, x0, do_place_two
-    addi  t2, t2, -1
-
-next_cell:
-    addi  t0, t0, 4
-    addi  t1, t1, -1
-    bne   t1, x0, place_two_loop
-    j     place_two_done
-
-do_place_two:
-    addi  t3, x0, 2
-    sw    t3, 0(t0)
-    j     place_two_done
-
-place_two_done:
-    lw    t2, 0(sp)
-    lw    t1, 4(sp)
-    lw    t0, 8(sp)
-    lw    ra, 12(sp)
-    addi  sp, sp, 16
-    jr    ra
+########################################
+# LAYER 2 — MOVE RESOLUTION
+########################################
 
 resolve_left:
-    addi sp, sp, -16
-    sw   ra, 12(sp)
-    sw   t0, 8(sp)
-    sw   t1, 4(sp)
-    sw   t2, 0(sp)
-
     la   t0, board
-    li   t1, 0              # row
-
-rl_row_loop:
-    li   t2, 0              # seen tile
-    li   t3, 0              # last value
-    li   t4, 0              # col
-
-rl_col_loop:
-    slli t5, t1, 3          # row * 12
-    slli t6, t4, 2
-    add  t5, t5, t6
-    add  t5, t5, t0
-    lw   t7, 0(t5)
-
-    beq  t7, x0, rl_gap
-    beq  t2, x0, rl_first
-    beq  t7, t3, rl_valid
-    mv   t3, t7
-    addi t4, t4, 1
-    blt  t4, 3, rl_col_loop
-    j    rl_next_row
-
-rl_first:
-    mv   t3, t7
-    li   t2, 1
-    addi t4, t4, 1
-    blt  t4, 3, rl_col_loop
-    j    rl_next_row
-
-rl_gap:
-    bne  t2, x0, rl_valid
-    addi t4, t4, 1
-    blt  t4, 3, rl_col_loop
-
-rl_next_row:
-    addi t1, t1, 1
-    blt  t1, 3, rl_row_loop
-    li   a0, 0
-    j    rl_done
-
-rl_valid:
-    li   a0, 1
-
-rl_done:
-    lw   t2, 0(sp)
-    lw   t1, 4(sp)
-    lw   t0, 8(sp)
-    lw   ra, 12(sp)
-    addi sp, sp, 16
-    jr   ra
-
-####################
-# RESOLVE RIGHT (D)
-####################
-resolve_right:
-    addi sp, sp, -16
-    sw   ra, 12(sp)
-    sw   t0, 8(sp)
-    sw   t1, 4(sp)
-    sw   t2, 0(sp)
-
-    la   t0, board
-    li   t1, 0              # row
-
-rr_row_loop:
+    li   t1, 0
+rl_row:
     li   t2, 0
     li   t3, 0
-    li   t4, 2              # col (right to left)
-
-rr_col_loop:
+    li   t4, 0
+rl_col:
     slli t5, t1, 3
     slli t6, t4, 2
     add  t5, t5, t6
     add  t5, t5, t0
     lw   t7, 0(t5)
+    beq  t7, x0, rl_gap
+    beq  t2, x0, rl_first
+    beq  t7, t3, rl_valid
+    mv   t3, t7
+    addi t4, t4, 1
+    blt  t4, 3, rl_col
+    j    rl_next
+rl_first:
+    mv   t3, t7
+    li   t2, 1
+    addi t4, t4, 1
+    blt  t4, 3, rl_col
+    j    rl_next
+rl_gap:
+    bne  t2, x0, rl_valid
+    addi t4, t4, 1
+    blt  t4, 3, rl_col
+rl_next:
+    addi t1, t1, 1
+    blt  t1, 3, rl_row
+    li   a0, 0
+    jr   ra
+rl_valid:
+    li   a0, 1
+    jr   ra
 
+resolve_right:
+    la   t0, board
+    li   t1, 0
+rr_row:
+    li   t2, 0
+    li   t3, 0
+    li   t4, 2
+rr_col:
+    slli t5, t1, 3
+    slli t6, t4, 2
+    add  t5, t5, t6
+    add  t5, t5, t0
+    lw   t7, 0(t5)
     beq  t7, x0, rr_gap
     beq  t2, x0, rr_first
     beq  t7, t3, rr_valid
     mv   t3, t7
     addi t4, t4, -1
-    bge  t4, x0, rr_col_loop
-    j    rr_next_row
-
+    bge  t4, x0, rr_col
+    j    rr_next
 rr_first:
     mv   t3, t7
     li   t2, 1
     addi t4, t4, -1
-    bge  t4, x0, rr_col_loop
-    j    rr_next_row
-
+    bge  t4, x0, rr_col
+    j    rr_next
 rr_gap:
     bne  t2, x0, rr_valid
     addi t4, t4, -1
-    bge  t4, x0, rr_col_loop
-
-rr_next_row:
+    bge  t4, x0, rr_col
+rr_next:
     addi t1, t1, 1
-    blt  t1, 3, rr_row_loop
+    blt  t1, 3, rr_row
     li   a0, 0
-    j    rr_done
-
+    jr   ra
 rr_valid:
     li   a0, 1
-
-rr_done:
-    lw   t2, 0(sp)
-    lw   t1, 4(sp)
-    lw   t0, 8(sp)
-    lw   ra, 12(sp)
-    addi sp, sp, 16
     jr   ra
 
-####################
-# RESOLVE UP (W)
-####################
 resolve_up:
-    addi sp, sp, -16
-    sw   ra, 12(sp)
-    sw   t0, 8(sp)
-    sw   t1, 4(sp)
-    sw   t2, 0(sp)
-
     la   t0, board
-    li   t1, 0              # col
-
-ru_col_loop:
+    li   t1, 0
+ru_col:
     li   t2, 0
     li   t3, 0
-    li   t4, 0              # row
-
-ru_row_loop:
+    li   t4, 0
+ru_row:
     slli t5, t4, 3
     slli t6, t1, 2
     add  t5, t5, t6
     add  t5, t5, t0
     lw   t7, 0(t5)
-
     beq  t7, x0, ru_gap
     beq  t2, x0, ru_first
     beq  t7, t3, ru_valid
     mv   t3, t7
     addi t4, t4, 1
-    blt  t4, 3, ru_row_loop
-    j    ru_next_col
-
+    blt  t4, 3, ru_row
+    j    ru_next
 ru_first:
     mv   t3, t7
     li   t2, 1
     addi t4, t4, 1
-    blt  t4, 3, ru_row_loop
-    j    ru_next_col
-
+    blt  t4, 3, ru_row
+    j    ru_next
 ru_gap:
     bne  t2, x0, ru_valid
     addi t4, t4, 1
-    blt  t4, 3, ru_row_loop
-
-ru_next_col:
+    blt  t4, 3, ru_row
+ru_next:
     addi t1, t1, 1
-    blt  t1, 3, ru_col_loop
+    blt  t1, 3, ru_col
     li   a0, 0
-    j    ru_done
-
+    jr   ra
 ru_valid:
     li   a0, 1
-
-ru_done:
-    lw   t2, 0(sp)
-    lw   t1, 4(sp)
-    lw   t0, 8(sp)
-    lw   ra, 12(sp)
-    addi sp, sp, 16
     jr   ra
 
-####################
-# RESOLVE DOWN (S)
-####################
 resolve_down:
-    addi sp, sp, -16
-    sw   ra, 12(sp)
-    sw   t0, 8(sp)
-    sw   t1, 4(sp)
-    sw   t2, 0(sp)
-
     la   t0, board
-    li   t1, 0              # col
-
-rd_col_loop:
+    li   t1, 0
+rd_col:
     li   t2, 0
     li   t3, 0
-    li   t4, 2              # row (bottom to top)
-
-rd_row_loop:
+    li   t4, 2
+rd_row:
     slli t5, t4, 3
     slli t6, t1, 2
     add  t5, t5, t6
     add  t5, t5, t0
     lw   t7, 0(t5)
-
     beq  t7, x0, rd_gap
     beq  t2, x0, rd_first
     beq  t7, t3, rd_valid
     mv   t3, t7
     addi t4, t4, -1
-    bge  t4, x0, rd_row_loop
-    j    rd_next_col
-
+    bge  t4, x0, rd_row
+    j    rd_next
 rd_first:
     mv   t3, t7
     li   t2, 1
     addi t4, t4, -1
-    bge  t4, x0, rd_row_loop
-    j    rd_next_col
-
+    bge  t4, x0, rd_row
+    j    rd_next
 rd_gap:
     bne  t2, x0, rd_valid
     addi t4, t4, -1
-    bge  t4, x0, rd_row_loop
-
-rd_next_col:
+    bge  t4, x0, rd_row
+rd_next:
     addi t1, t1, 1
-    blt  t1, 3, rd_col_loop
+    blt  t1, 3, rd_col
     li   a0, 0
-    j    rd_done
-
+    jr   ra
 rd_valid:
     li   a0, 1
-
-rd_done:
-    lw   t2, 0(sp)
-    lw   t1, 4(sp)
-    lw   t0, 8(sp)
-    lw   ra, 12(sp)
-    addi sp, sp, 16
     jr   ra
-
-
-
-
-
-
-
-
-
-
