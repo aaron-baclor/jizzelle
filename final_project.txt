@@ -11,6 +11,7 @@ menu2:       .asciz "[1] New Game\n"
 menu3:       .asciz "[2] Start from a State\n"
 enter_cfg:   .asciz "Enter a board configuration:\n"
 enter_move:  .asciz "Enter a move:\n"
+config_buf: .byte 0
 
 .text
 .globl main
@@ -94,26 +95,64 @@ place_second:
     jal   ra, print_board
     j     game_start
 
-start_from_state:
-    la    a0, enter_cfg
-    li    a7, 4
-    ecall
-    
+read_config:
     la    t0, board
-    li    t1, 0
-    li    t2, 9
+    li    t1, 9            # cells remaining
 
-read_config_loop:
-    li    a7, 5           # Read integer
+read_cell:
+    li    t2, 0            # accumulator = 0
+
+read_char:
+    li    a0, 0
+    la    a1, inbuf
+    li    a2, 1
+    li    a7, 63
     ecall
-    slli  t3, t1, 2
-    add   t3, t0, t3
-    sw    a0, 0(t3)
-    addi  t1, t1, 1
-    blt   t1, t2, read_config_loop
 
-    jal   ra, print_board
+    lb    t3, 0(a1)
 
+    # skip whitespace: space (32), LF (10), CR (13)
+    li    t4, 32
+    beq   t3, t4, read_char
+    li    t4, 10
+    beq   t3, t4, read_char
+    li    t4, 13
+    beq   t3, t4, read_char
+
+digit_loop:
+    # if char < '0' (48), stop
+    li    t4, 48
+    blt   t3, t4, store_cell
+    # if char > '9' (57), stop
+    li    t4, 57
+    bgt   t3, t4, store_cell
+
+    # digit = char - 48
+    addi  t3, t3, -48
+
+    # t2 = t2 * 10  (x*8 + x*2)
+    slli  t5, t2, 3        # *8
+    slli  t6, t2, 1        # *2
+    add   t2, t5, t6       # *10
+    add   t2, t2, t3       # + digit
+
+    # read next char
+    li    a0, 0
+    la    a1, inbuf
+    li    a2, 1
+    li    a7, 63
+    ecall
+    lb    t3, 0(a1)
+    j     digit_loop
+
+store_cell:
+    sw    t2, 0(t0)
+    addi  t0, t0, 4
+    addi  t1, t1, -1
+    bne   t1, x0, read_cell
+
+    jr    ra
+    
 game_start:
     la    a0, enter_move
     li    a7, 4
@@ -216,22 +255,58 @@ handle_exit:
 ########################################
 
 spawn_tile:
+    # Count empty cells
     la    t0, board
-    li    t1, 0
-    li    t2, 9
+    li    t1, 9
+    li    t2, 0              # empty_count
 
-spawn_loop:
-    slli  t3, t1, 2
-    add   t3, t0, t3
-    lw    t4, 0(t3)
-    beq   t4, x0, spawn_here
-    addi  t1, t1, 1
-    blt   t1, t2, spawn_loop
-    jr    ra              # No empty cell found
+count_empty_loop:
+    lw    t3, 0(t0)
+    bne   t3, x0, ce_next
+    addi  t2, t2, 1
+ce_next:
+    addi  t0, t0, 4
+    addi  t1, t1, -1
+    bne   t1, x0, count_empty_loop
+
+    beq   t2, x0, spawn_done   # no empty cells
+
+    # index = press_count mod empty_count
+    la    t0, press_count
+    lw    t1, 0(t0)
+    mv    t3, t1               # counter
+    mv    t4, t2               # empty_count
+
+mod_loop:
+    blt   t3, t4, mod_done
+    sub   t3, t3, t4
+    j     mod_loop
+
+mod_done:
+    # t3 = target empty index
+
+    # Scan again and place tile
+    la    t0, board
+    li    t1, 9
+
+spawn_scan:
+    lw    t5, 0(t0)
+    bne   t5, x0, ss_next
+
+    beq   t3, x0, spawn_here
+    addi  t3, t3, -1
+
+ss_next:
+    addi  t0, t0, 4
+    addi  t1, t1, -1
+    bne   t1, x0, spawn_scan
+    j     spawn_done
 
 spawn_here:
-    li    t4, 2
-    sw    t4, 0(t3)
+    li    t5, 2
+    sw    t5, 0(t0)
+
+spawn_done:
     jr    ra
 
 ########################################
@@ -415,6 +490,10 @@ print_cell_done:
 ########################################
 # LAYER 2 - MOVE RESOLUTION
 ########################################
+r_valid:
+    li   a0, 1
+    jr   ra
+
 resolve_left:
     la   t0, board
     li   t6, 3          # size
