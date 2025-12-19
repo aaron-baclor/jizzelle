@@ -1,10 +1,6 @@
 # Aaron Jori Baclor
 # Raphael Anton Felix
 
-#define LED_MATRIX_0_BASE (0xf0000040)
-#define LED_MATRIX_0_SIZE (0x64)
-#define LED_MATRIX_0_WIDTH (0x6)
-#define LED_MATRIX_0_HEIGHT (0x6)
 .data
 board:       .word 0,0,0, 0,0,0, 0,0,0
 press_count: .word 0
@@ -28,7 +24,6 @@ enter_move:  .asciz "Enter a move:\n"
 
 main:
 new_game:
-    # Place ONE random 2 at start
     la    t0, press_count
     lw    t1, 0(t0)
     li    t2, 9
@@ -45,33 +40,30 @@ new_game:
     
 
 read_config_loop:
-    li   t5, 0          # accumulator = 0
-    li   a5, 0          # seen_digit = 0
+    li   t5, 0      
+    li   a5, 0       
 
 read_number:
-    # read one character into inbuf
     li   a0, 0
     la   a1, inbuf
     li   a2, 1
     li   a7, 63
     ecall
 
-    lb   t6, 0(a1)      # t6 = char
+    lb   t6, 0(a1)   
 
-    li   a3, 10         # '\n'
+    li   a3, 10    
     beq  t6, a3, maybe_store
 
-    # digit: acc = acc*10 + (char - '0')
-    li   a3, 48         # '0'
-    sub  t6, t6, a3     # t6 = digit 0..9
+    li   a3, 48  
+    sub  t6, t6, a3   
     li   a3, 10
     mul  t5, t5, a3
     add  t5, t5, t6
-    li   a5, 1          # seen_digit = 1
+    li   a5, 1      
     j    read_number
 
 maybe_store:
-    #if we hit newline but haven't read any digits, skip it
     beq  a5, x0, read_number
 
 store_num:
@@ -91,7 +83,6 @@ game_start:
     ecall
 
 main_loop:
-    # Increment press_count for randomness
     la    t0, press_count
     lw    t1, 0(t0)
     addi  t1, t1, 1
@@ -153,17 +144,13 @@ handle_d:
     j     after_move
 
 after_move:
-    # Check for win (512 tile)
     jal   ra, check_win
     bne   a0, x0, handle_win
     
-    # Spawn new tile
     jal   ra, spawn_tile
     
-    # Print board
     jal   ra, print_board
     
-    # Check for game over
     jal   ra, check_game_over
     bne   a0, x0, handle_game_over
     
@@ -186,33 +173,29 @@ handle_exit:
     li    a7, 10
     ecall
 
-########################################
-# SPAWN TILE - Place 2 in RANDOM empty cell
-# Uses press_count as pseudo-random seed
-########################################
 
+# spawn
 spawn_tile:
-    # Count empty cells
     la    t0, board
     li    t1, 9
-    li    t2, 0              # empty_count
+    li    t2, 0         
 
 count_empty_loop:
     lw    t3, 0(t0)
     bne   t3, x0, ce_next
     addi  t2, t2, 1
+    
 ce_next:
     addi  t0, t0, 4
     addi  t1, t1, -1
     bne   t1, x0, count_empty_loop
 
-    beq   t2, x0, spawn_done   # no empty cells
+    beq   t2, x0, spawn_done   
 
-    # index = press_count mod empty_count
     la    t0, press_count
     lw    t1, 0(t0)
-    mv    t3, t1               # counter
-    mv    t4, t2               # empty_count
+    mv    t3, t1      
+    mv    t4, t2          
 
 mod_loop:
     blt   t3, t4, mod_done
@@ -220,9 +203,6 @@ mod_loop:
     j     mod_loop
 
 mod_done:
-    # t3 = target empty index
-
-    # Scan again and place tile
     la    t0, board
     li    t1, 9
 
@@ -246,10 +226,7 @@ spawn_here:
 spawn_done:
     jr    ra
 
-########################################
-# CHECK WIN - Returns 1 if 512 tile exists
-########################################
-
+# check win
 check_win:
     la    t0, board
     li    t1, 0
@@ -270,15 +247,12 @@ win_found:
     li    a0, 1
     jr    ra
 
-########################################
-# CHECK GAME OVER - Returns 1 if no moves left
-########################################
 
+# check game over
 check_game_over:
     addi  sp, sp, -4
     sw    ra, 0(sp)
     
-    # First check if any empty cell
     la    t0, board
     li    t1, 0
     li    t2, 9
@@ -287,11 +261,10 @@ go_empty_loop:
     slli  t3, t1, 2
     add   t3, t0, t3
     lw    t4, 0(t3)
-    beq   t4, x0, go_not_over   # Empty cell found
+    beq   t4, x0, go_not_over  
     addi  t1, t1, 1
     blt   t1, t2, go_empty_loop
-    
-    # No empty cells, check if any valid moves
+
     jal   ra, resolve_left
     bne   a0, x0, go_not_over
     jal   ra, resolve_right
@@ -300,8 +273,7 @@ go_empty_loop:
     bne   a0, x0, go_not_over
     jal   ra, resolve_down
     bne   a0, x0, go_not_over
-    
-    # No valid moves
+
     li    a0, 1
     lw    ra, 0(sp)
     addi  sp, sp, 4
@@ -313,42 +285,34 @@ go_not_over:
     addi  sp, sp, 4
     jr    ra
 
-########################################
-# PRINT BOARD
-########################################
-
+# print
 print_board:
     addi  sp, sp, -4
     sw    ra, 0(sp)
-
+    
     li    a0, LED_MATRIX_0_BASE
     la    s0, board
-    li    s1, 0              # board index
+    li    s1, 0      
 
 pb_loop:
-    # Get tile value
     slli  t0, s1, 2
     add   t0, s0, t0
-    lw    t1, 0(t0)          # t1 = tile value
+    lw    t1, 0(t0)      
     
-    # Calculate LED offset (each tile = 4 LEDs)
-    # Position in 3x3 grid
     li    t2, 3
-    div   t3, s1, t2         # t3 = row (0-2)
-    rem   t4, s1, t2         # t4 = col (0-2)
-    
-    # LED offset = (row*2*6 + col*2) * 4
-    slli  t3, t3, 1          # row*2
+    div   t3, s1, t2      
+    rem   t4, s1, t2      
+
+    slli  t3, t3, 1     
     li    t5, 6
-    mul   t3, t3, t5         # row*2*6
-    slli  t4, t4, 1          # col*2
-    add   t3, t3, t4         # row*2*6 + col*2
-    slli  t3, t3, 2          # multiply by 4 bytes
-    add   a1, a0, t3         # a1 = LED base for this tile
-    
-    # Draw tile based on value
-    mv    a2, t1             # a2 = tile value
-    jal   ra, draw_tile_simple
+    mul   t3, t3, t5 
+    slli  t4, t4, 1    
+    add   t3, t3, t4 
+    slli  t3, t3, 2    
+    add   a1, a0, t3  
+
+    mv    a2, t1      
+    jal   ra, draw_tile
     
     addi  s1, s1, 1
     li    t0, 9
@@ -358,12 +322,11 @@ pb_loop:
     addi  sp, sp, 4
     jr    ra
 
-draw_tile_simple:
-    # a1 = LED base address for tile, a2 = value
-    li    t0, 0x000000       # black (off)
-    li    t1, 0xFF0000       # red
-    li    t2, 0x00FF00       # green
-    li    t3, 0xFFFF00       # yellow
+draw_tile:
+    li    t0, 0x000000   
+    li    t1, 0xFF0000 
+    li    t2, 0x00FF00   
+    li    t3, 0xFFFF00 
     
     beq   a2, x0, dt_0
     li    t4, 2
@@ -387,74 +350,75 @@ draw_tile_simple:
     jr    ra
 
 dt_0:
-    sw    t0, 0(a1)          # all off
+    sw    t0, 0(a1)     
     sw    t0, 4(a1)
     sw    t0, 24(a1)
     sw    t0, 28(a1)
     jr    ra
 
 dt_2:
-    sw    t1, 0(a1)          # red upper-left only
+    sw    t1, 0(a1)      
     sw    t0, 4(a1)
     sw    t0, 24(a1)
     sw    t0, 28(a1)
     jr    ra
 
 dt_4:
-    sw    t1, 0(a1)          # red upper-left
+    sw    t1, 0(a1)       
     sw    t0, 4(a1)
     sw    t0, 24(a1)
-    sw    t1, 28(a1)         # red lower-right
+    sw    t1, 28(a1)   
     jr    ra
 
 dt_8:
-    sw    t1, 0(a1)          # red upper-left
-    sw    t1, 4(a1)          # red upper-right
+    sw    t1, 0(a1)      
+    sw    t1, 4(a1)      
     sw    t0, 24(a1)
-    sw    t1, 28(a1)         # red lower-right
+    sw    t1, 28(a1)     
     jr    ra
 
 dt_16:
-    sw    t1, 0(a1)          # red all four
+    sw    t1, 0(a1)     
     sw    t1, 4(a1)
     sw    t1, 24(a1)
     sw    t1, 28(a1)
     jr    ra
 
 dt_32:
-    sw    t2, 0(a1)          # green upper-left only
+    sw    t2, 0(a1)     
     sw    t0, 4(a1)
     sw    t0, 24(a1)
     sw    t0, 28(a1)
     jr    ra
 
 dt_64:
-    sw    t2, 0(a1)          # green upper-left
+    sw    t2, 0(a1)    
     sw    t0, 4(a1)
     sw    t0, 24(a1)
-    sw    t2, 28(a1)         # green lower-right
+    sw    t2, 28(a1)   
     jr    ra
 
 dt_128:
-    sw    t2, 0(a1)          # green upper-left
-    sw    t2, 4(a1)          # green upper-right
+    sw    t2, 0(a1)      
+    sw    t2, 4(a1)         
     sw    t0, 24(a1)
-    sw    t2, 28(a1)         # green lower-right
+    sw    t2, 28(a1)     
     jr    ra
 
 dt_256:
-    sw    t2, 0(a1)          # green all four
+    sw    t2, 0(a1)      
     sw    t2, 4(a1)
     sw    t2, 24(a1)
     sw    t2, 28(a1)
     jr    ra
 
 dt_512:
-    sw    t3, 0(a1)          # yellow all four
+    sw    t3, 0(a1)       
     sw    t3, 4(a1)
     sw    t3, 24(a1)
     sw    t3, 28(a1)
     jr    ra
+    
 one_digit:
     li    a0, 32
     li    a7, 11
@@ -489,22 +453,20 @@ print_cell_done:
     addi  sp, sp, 16
     jr    ra
 
-########################################
-# LAYER 2 - MOVE RESOLUTION
-########################################
+# layer 2
 r_valid:
     li   a0, 1
     jr   ra
 
 resolve_left:
     la   t0, board
-    li   t6, 3          # size
-    li   t1, 0          # row
+    li   t6, 3     
+    li   t1, 0     
 
 rl_row:
-    li   t2, 0          # seen_zero
-    li   t3, 0          # last_nonzero
-    li   t4, 0          # col
+    li   t2, 0      
+    li   t3, 0      
+    li   t4, 0     
 
 rl_col:
     mul  t5, t1, t6
@@ -515,9 +477,9 @@ rl_col:
 
     beq  t5, x0, rl_zero
 
-    bne  t2, x0, r_valid       # nonzero after a zero -> can slide left
+    bne  t2, x0, r_valid      
     beq  t3, x0, rl_setlast
-    beq  t5, t3, r_valid       # merge possible
+    beq  t5, t3, r_valid 
     mv   t3, t5
     j    rl_next
 
@@ -526,7 +488,7 @@ rl_setlast:
     j    rl_next
 
 rl_zero:
-    li   t2, 1                 # saw a zero
+    li   t2, 1         
 
 rl_next:
     addi t4, t4, 1
@@ -541,12 +503,12 @@ rl_next:
 resolve_right:
     la   t0, board
     li   t6, 3
-    li   t1, 0          # row
+    li   t1, 0    
 
 rr_row:
-    li   t2, 0          # seen_zero
-    li   t3, 0          # last_nonzero
-    li   t4, 2          # col
+    li   t2, 0    
+    li   t3, 0    
+    li   t4, 2     
 
 rr_col:
     mul  t5, t1, t6
@@ -557,9 +519,9 @@ rr_col:
 
     beq  t5, x0, rr_zero
 
-    bne  t2, x0, r_valid       # nonzero after a zero (in scan dir) -> can slide right
+    bne  t2, x0, r_valid      
     beq  t3, x0, rr_setlast
-    beq  t5, t3, r_valid       # merge possible
+    beq  t5, t3, r_valid  
     mv   t3, t5
     j    rr_next
 
@@ -583,12 +545,12 @@ rr_next:
 resolve_up:
     la   t0, board
     li   t6, 3
-    li   t1, 0          # col
+    li   t1, 0 
 
 ru_col:
-    li   t2, 0          # seen_zero
-    li   t3, 0          # last_nonzero
-    li   t4, 0          # row
+    li   t2, 0   
+    li   t3, 0      
+    li   t4, 0  
 
 ru_row:
     mul  t5, t4, t6
@@ -625,12 +587,12 @@ ru_next:
 resolve_down:
     la   t0, board
     li   t6, 3
-    li   t1, 0          # col
+    li   t1, 0  
 
 rd_col:
-    li   t2, 0          # seen_zero
-    li   t3, 0          # last_nonzero
-    li   t4, 2          # row
+    li   t2, 0     
+    li   t3, 0    
+    li   t4, 2    
 
 rd_row:
     mul  t5, t4, t6
@@ -664,10 +626,7 @@ rd_next:
     li   a0, 0
     jr   ra
 
-########################################
-# LAYER 3 - APPLY MOVES
-########################################
-
+# layer 3
 apply_left:
     addi sp, sp, -8
     sw   s0, 4(sp)
@@ -681,8 +640,7 @@ al_row:
     li   t2, 0
     li   t3, 0
     li   t4, 0
-    li   s0, 0          # merged flag
-
+    li   s0, 0 
 al_read:
     mul  t5, t1, t6
     add  t5, t5, t2

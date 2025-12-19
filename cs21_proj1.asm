@@ -1,17 +1,18 @@
 # Aaron Jori Baclor
 # Raphael Anton Felix
 
-#define LED_MATRIX_0_BASE (0xf0000040)
-#define LED_MATRIX_0_SIZE (0x64)
-#define LED_MATRIX_0_WIDTH (0x6)
-#define LED_MATRIX_0_HEIGHT (0x6)
 .data
 board:       .word 0,0,0, 0,0,0, 0,0,0
 press_count: .word 0
+row_border:  .asciz "+---+---+---+\n"
 game_over:   .asciz "Game over.\n"
 win_msg:     .asciz "Congratulations! You have reached the 512 tile!\n"
 inbuf:       .byte 0
 newline:     .asciz "\n"
+menu1:       .asciz "Choose [1] or [2]:\n"
+menu2:       .asciz "[1] New Game\n"
+menu3:       .asciz "[2] Start from a State\n"
+enter_cfg:   .asciz "Enter a board configuration:\n"
 enter_move:  .asciz "Enter a move:\n"
 
 .text
@@ -27,12 +28,49 @@ enter_move:  .asciz "Enter a move:\n"
 .equ KEY_2, 50
 
 main:
+    # Print menu
+    la    a0, menu1
+    li    a7, 4
+    ecall
+    la    a0, menu2
+    li    a7, 4
+    ecall
+    la    a0, menu3
+    li    a7, 4
+    ecall
+
+menu_input:
+    la   t0, press_count
+    lw   t1, 0(t0)
+    addi t1, t1, 1
+    sw   t1, 0(t0)
+
+    li   a0, 0
+    la   a1, inbuf
+    li   a2, 1
+    li   a7, 63
+    ecall
+    beq   a0, x0, menu_input
+
+    la    t0, inbuf
+    lb    t1, 0(t0)
+
+    li    t2, KEY_1
+    beq   t1, t2, new_game
+
+    li    t2, KEY_2
+    beq   t1, t2, start_from_state
+
+    j     menu_input
+
 new_game:
-    # Place ONE random 2 at start
+    # place two random 2s using press_count as seed
     la    t0, press_count
     lw    t1, 0(t0)
+    
+    # first tile position
     li    t2, 9
-    rem   t3, t1, t2
+    rem   t3, t1, t2        # t3 = position 0-8
     
     la    t0, board
     slli  t4, t3, 2
@@ -40,9 +78,38 @@ new_game:
     li    t5, 2
     sw    t5, 0(t4)
     
+    # second tile - diff position
+    addi  t1, t1, 3
+    li    t2, 9
+    rem   t6, t1, t2
+    beq   t6, t3, adjust_pos
+    j     place_second
+    
+adjust_pos:
+    addi  t6, t6, 1
+    li    t2, 9
+    rem   t6, t6, t2
+
+place_second:
+    slli  t4, t6, 2
+    add   t4, t0, t4
+    sw    t5, 0(t4)
+    
     jal   ra, print_board
     j     game_start
-    
+
+start_from_state:
+    # reset press_count
+    la   t0, press_count
+    sw   x0, 0(t0)
+
+    la   a0, enter_cfg
+    li   a7, 4
+    ecall
+
+    la   t0, board
+    li   t1, 0          # index
+    li   t2, 9          # total cells
 
 read_config_loop:
     li   t5, 0          # accumulator = 0
@@ -71,7 +138,7 @@ read_number:
     j    read_number
 
 maybe_store:
-    #if we hit newline but haven't read any digits, skip it
+    # if newline is hit havent read any digits, skip
     beq  a5, x0, read_number
 
 store_num:
@@ -91,7 +158,7 @@ game_start:
     ecall
 
 main_loop:
-    # Increment press_count for randomness
+    # increment press_count for randomness
     la    t0, press_count
     lw    t1, 0(t0)
     addi  t1, t1, 1
@@ -128,6 +195,8 @@ main_loop:
 
     j     main_loop
 
+# layer 1 - input handling
+# what key is pressed
 handle_w:
     jal   ra, resolve_up
     beq   a0, x0, main_loop
@@ -153,17 +222,17 @@ handle_d:
     j     after_move
 
 after_move:
-    # Check for win (512 tile)
+    # check win (512 tile)
     jal   ra, check_win
     bne   a0, x0, handle_win
     
-    # Spawn new tile
+    # spawn new tile
     jal   ra, spawn_tile
     
-    # Print board
+    # print board
     jal   ra, print_board
     
-    # Check for game over
+    # check for game over
     jal   ra, check_game_over
     bne   a0, x0, handle_game_over
     
@@ -186,13 +255,11 @@ handle_exit:
     li    a7, 10
     ecall
 
-########################################
-# SPAWN TILE - Place 2 in RANDOM empty cell
-# Uses press_count as pseudo-random seed
-########################################
 
+# spawn tile - place 2 in random empty cell
+# press_count as pseudo-random seed
 spawn_tile:
-    # Count empty cells
+    # count empty cells
     la    t0, board
     li    t1, 9
     li    t2, 0              # empty_count
@@ -221,7 +288,6 @@ mod_loop:
 
 mod_done:
     # t3 = target empty index
-
     # Scan again and place tile
     la    t0, board
     li    t1, 9
@@ -246,10 +312,8 @@ spawn_here:
 spawn_done:
     jr    ra
 
-########################################
-# CHECK WIN - Returns 1 if 512 tile exists
-########################################
 
+# check win - returns 1 if 512 exists
 check_win:
     la    t0, board
     li    t1, 0
@@ -270,15 +334,13 @@ win_found:
     li    a0, 1
     jr    ra
 
-########################################
-# CHECK GAME OVER - Returns 1 if no moves left
-########################################
 
+# check game over - returns 1 if no moves left
 check_game_over:
     addi  sp, sp, -4
     sw    ra, 0(sp)
     
-    # First check if any empty cell
+    # first check if any empty cell
     la    t0, board
     li    t1, 0
     li    t2, 9
@@ -287,11 +349,11 @@ go_empty_loop:
     slli  t3, t1, 2
     add   t3, t0, t3
     lw    t4, 0(t3)
-    beq   t4, x0, go_not_over   # Empty cell found
+    beq   t4, x0, go_not_over   # empty cell found
     addi  t1, t1, 1
     blt   t1, t2, go_empty_loop
     
-    # No empty cells, check if any valid moves
+    # no empty cells, check if any valid moves
     jal   ra, resolve_left
     bne   a0, x0, go_not_over
     jal   ra, resolve_right
@@ -301,7 +363,7 @@ go_empty_loop:
     jal   ra, resolve_down
     bne   a0, x0, go_not_over
     
-    # No valid moves
+    # no valid moves
     li    a0, 1
     lw    ra, 0(sp)
     addi  sp, sp, 4
@@ -313,148 +375,80 @@ go_not_over:
     addi  sp, sp, 4
     jr    ra
 
-########################################
-# PRINT BOARD
-########################################
-
+# print board
 print_board:
-    addi  sp, sp, -4
-    sw    ra, 0(sp)
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
 
-    li    a0, LED_MATRIX_0_BASE
-    la    s0, board
-    li    s1, 0              # board index
-
-pb_loop:
-    # Get tile value
-    slli  t0, s1, 2
-    add   t0, s0, t0
-    lw    t1, 0(t0)          # t1 = tile value
-    
-    # Calculate LED offset (each tile = 4 LEDs)
-    # Position in 3x3 grid
+    la    t0, board
+    li    t1, 0
     li    t2, 3
-    div   t3, s1, t2         # t3 = row (0-2)
-    rem   t4, s1, t2         # t4 = col (0-2)
-    
-    # LED offset = (row*2*6 + col*2) * 4
-    slli  t3, t3, 1          # row*2
-    li    t5, 6
-    mul   t3, t3, t5         # row*2*6
-    slli  t4, t4, 1          # col*2
-    add   t3, t3, t4         # row*2*6 + col*2
-    slli  t3, t3, 2          # multiply by 4 bytes
-    add   a1, a0, t3         # a1 = LED base for this tile
-    
-    # Draw tile based on value
-    mv    a2, t1             # a2 = tile value
-    jal   ra, draw_tile_simple
-    
-    addi  s1, s1, 1
-    li    t0, 9
-    blt   s1, t0, pb_loop
 
-    lw    ra, 0(sp)
-    addi  sp, sp, 4
+print_board_row_loop:
+    la    a0, row_border
+    li    a7, 4
+    ecall
+
+    li    t3, 3
+
+print_board_cell_loop:
+    li    a0, 124
+    li    a7, 11
+    ecall
+
+    slli  t4, t1, 2
+    add   t4, t0, t4
+    lw    a0, 0(t4)
+    jal   ra, print_cell_value
+
+    addi  t1, t1, 1
+    addi  t3, t3, -1
+    bne   t3, x0, print_board_cell_loop
+
+    li    a0, 124
+    li    a7, 11
+    ecall
+    li    a0, 10
+    li    a7, 11
+    ecall
+
+    addi  t2, t2, -1
+    bne   t2, x0, print_board_row_loop
+
+    la    a0, row_border
+    li    a7, 4
+    ecall
+
+    lw    t2, 0(sp)
+    lw    t1, 4(sp)
+    lw    t0, 8(sp)
+    lw    ra, 12(sp)
+    addi  sp, sp, 16
     jr    ra
 
-draw_tile_simple:
-    # a1 = LED base address for tile, a2 = value
-    li    t0, 0x000000       # black (off)
-    li    t1, 0xFF0000       # red
-    li    t2, 0x00FF00       # green
-    li    t3, 0xFFFF00       # yellow
-    
-    beq   a2, x0, dt_0
-    li    t4, 2
-    beq   a2, t4, dt_2
-    li    t4, 4
-    beq   a2, t4, dt_4
-    li    t4, 8
-    beq   a2, t4, dt_8
-    li    t4, 16
-    beq   a2, t4, dt_16
-    li    t4, 32
-    beq   a2, t4, dt_32
-    li    t4, 64
-    beq   a2, t4, dt_64
-    li    t4, 128
-    beq   a2, t4, dt_128
-    li    t4, 256
-    beq   a2, t4, dt_256
-    li    t4, 512
-    beq   a2, t4, dt_512
-    jr    ra
+print_cell_value:
+    addi  sp, sp, -16
+    sw    ra, 12(sp)
+    sw    t0, 8(sp)
+    sw    t1, 4(sp)
+    sw    t2, 0(sp)
 
-dt_0:
-    sw    t0, 0(a1)          # all off
-    sw    t0, 4(a1)
-    sw    t0, 24(a1)
-    sw    t0, 28(a1)
-    jr    ra
+    mv    t0, a0
+    beq   t0, x0, print_cell_blank
 
-dt_2:
-    sw    t1, 0(a1)          # red upper-left only
-    sw    t0, 4(a1)
-    sw    t0, 24(a1)
-    sw    t0, 28(a1)
-    jr    ra
+    li    t1, 10
+    blt   t0, t1, one_digit
+    li    t1, 100
+    blt   t0, t1, two_digits
 
-dt_4:
-    sw    t1, 0(a1)          # red upper-left
-    sw    t0, 4(a1)
-    sw    t0, 24(a1)
-    sw    t1, 28(a1)         # red lower-right
-    jr    ra
+    mv    a0, t0
+    li    a7, 1
+    ecall
+    j     print_cell_done
 
-dt_8:
-    sw    t1, 0(a1)          # red upper-left
-    sw    t1, 4(a1)          # red upper-right
-    sw    t0, 24(a1)
-    sw    t1, 28(a1)         # red lower-right
-    jr    ra
-
-dt_16:
-    sw    t1, 0(a1)          # red all four
-    sw    t1, 4(a1)
-    sw    t1, 24(a1)
-    sw    t1, 28(a1)
-    jr    ra
-
-dt_32:
-    sw    t2, 0(a1)          # green upper-left only
-    sw    t0, 4(a1)
-    sw    t0, 24(a1)
-    sw    t0, 28(a1)
-    jr    ra
-
-dt_64:
-    sw    t2, 0(a1)          # green upper-left
-    sw    t0, 4(a1)
-    sw    t0, 24(a1)
-    sw    t2, 28(a1)         # green lower-right
-    jr    ra
-
-dt_128:
-    sw    t2, 0(a1)          # green upper-left
-    sw    t2, 4(a1)          # green upper-right
-    sw    t0, 24(a1)
-    sw    t2, 28(a1)         # green lower-right
-    jr    ra
-
-dt_256:
-    sw    t2, 0(a1)          # green all four
-    sw    t2, 4(a1)
-    sw    t2, 24(a1)
-    sw    t2, 28(a1)
-    jr    ra
-
-dt_512:
-    sw    t3, 0(a1)          # yellow all four
-    sw    t3, 4(a1)
-    sw    t3, 24(a1)
-    sw    t3, 28(a1)
-    jr    ra
 one_digit:
     li    a0, 32
     li    a7, 11
@@ -489,9 +483,8 @@ print_cell_done:
     addi  sp, sp, 16
     jr    ra
 
-########################################
-# LAYER 2 - MOVE RESOLUTION
-########################################
+# layer 2 - move resolution
+# what happens if key is pressed
 r_valid:
     li   a0, 1
     jr   ra
@@ -664,10 +657,9 @@ rd_next:
     li   a0, 0
     jr   ra
 
-########################################
-# LAYER 3 - APPLY MOVES
-########################################
 
+# layer 3 - apply moves
+# which numbers move where in mem
 apply_left:
     addi sp, sp, -8
     sw   s0, 4(sp)
